@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 
@@ -10,12 +11,16 @@ import (
 
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan() // Read one line
-	result, err := preproc.PreprocFile(scanner.Text(), "stdin")
+	var buffer bytes.Buffer
+	for scanner.Scan() {
+		buffer.WriteString(scanner.Text() + "\n")
+	}
+
+	result, err := preproc.PreprocFile(buffer.String(), "stdin")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Gompp error while using preproc.PreprocFile:\n", err.Error())
 		os.Exit(-1)
 	}
-	fmt.Fprintf(os.Stdin, result)
+	fmt.Print(result)
 	return
 }
