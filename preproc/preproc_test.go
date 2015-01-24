@@ -10,6 +10,11 @@ import "fmt"
 
 func Foo() {
    fmt.Println("Hello, World!")
+   for i := 0; i < 10; i++ {
+   }
+
+   for j := 31337; j > -10; j-- {
+   }
 }
 
 func main() {
