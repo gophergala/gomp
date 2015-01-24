@@ -6,9 +6,15 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+
+	"github.com/gophergala/gomp/gensym"
 )
 
 type Cond int
+
+type Context struct {
+	symGen func() string
+}
 
 const (
 	COND_LT = iota
@@ -69,7 +75,7 @@ func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, ok bool)
 	return
 }
 
-func visitFor(stmt *ast.ForStmt) *ast.BlockStmt {
+func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 	initVar, _, initOk := parseForInit(&stmt.Init)
 	condVar, _, _, condOk := parseForCond(&stmt.Cond)
 	postVar, _, postOk := parseForPost(&stmt.Post)
@@ -86,23 +92,23 @@ func visitFor(stmt *ast.ForStmt) *ast.BlockStmt {
 	return block
 }
 
-func visitStmt(stmt *ast.Stmt) {
+func visitStmt(stmt *ast.Stmt, context *Context) {
 	if stmt == nil {
 		return
 	}
 	if forStmt, ok := (*stmt).(*ast.ForStmt); ok {
-		if block := visitFor(forStmt); block != nil {
+		if block := visitFor(forStmt, context); block != nil {
 			*stmt = block
 		}
 	}
 }
 
-func visitFunction(f *ast.FuncDecl) {
+func visitFunction(f *ast.FuncDecl, context *Context) {
 	if f.Body == nil {
 		return
 	}
 	for i, _ := range f.Body.List {
-		visitStmt(&f.Body.List[i])
+		visitStmt(&f.Body.List[i], context)
 	}
 }
 
@@ -114,6 +120,8 @@ func PreprocFile(source, filename string) (result string, err error) {
 
 // This function should be used instead of PreprocFile.
 func PreprocFileImpl(source, filename string) (result string, err error) {
+	context := Context{gensym.MkGen(source)}
+
 	file, err := parser.ParseFile(token.NewFileSet(), filename, source,
 		parser.ParseComments|parser.AllErrors)
 	if err != nil {
@@ -121,7 +129,7 @@ func PreprocFileImpl(source, filename string) (result string, err error) {
 	}
 	for _, decl := range file.Decls {
 		if fun, ok := decl.(*ast.FuncDecl); ok {
-			visitFunction(fun)
+			visitFunction(fun, &context)
 		}
 	}
 
