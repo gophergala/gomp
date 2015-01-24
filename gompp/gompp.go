@@ -21,6 +21,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Gompp error while using preproc.PreprocFile:\n", err.Error())
 		os.Exit(-1)
 	}
-	fmt.Print(os.Stdout, result)
+	fmt.Print(result)
 	return
 }
