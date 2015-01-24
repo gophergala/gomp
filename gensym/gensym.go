@@ -90,7 +90,6 @@ func extractSymbols(src string) []string {
 	fset := token.NewFileSet()
 	file := fset.AddFile("", fset.Base(), len(src))
 	s.Init(file, []byte(src), nil, scanner.ScanComments)
-
 	res := make([]string, 0)
 	for {
 		_, tok, lit := s.Scan()
@@ -101,6 +100,5 @@ func extractSymbols(src string) []string {
 			res = append(res, lit)
 		}
 	}
-
 	return res
 }
