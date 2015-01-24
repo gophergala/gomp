@@ -117,11 +117,30 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 	return block
 }
 
+func visitExpr(e *ast.Expr, context *Context) {
+	if e == nil {
+		return
+	}
+	switch t := (*e).(type) {
+	case *ast.FuncLit:
+		if t.Body == nil {
+			return
+		}
+		for _, s := range t.Body.List {
+			visitStmt(&s, context)
+		}
+	}
+}
+
 func visitStmt(stmt *ast.Stmt, context *Context) {
 	if stmt == nil {
 		return
 	}
 	switch t := (*stmt).(type) {
+	case *ast.AssignStmt:
+		for _, e := range t.Rhs {
+			visitExpr(&e, context)
+		}
 	case *ast.ForStmt:
 		if block := visitFor(t, context); block != nil {
 			*stmt = block

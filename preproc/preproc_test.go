@@ -25,6 +25,14 @@ func Bar() {
   }
 }
 
+func Baz() {
+	g := func() {
+		for i := 0; i < 100; i++ {
+		}
+	}
+	g()
+}
+
 func main() {
 	fmt.Println("Hello, World!")
 }
@@ -55,6 +63,13 @@ func Bar() {
 			}
 		}
 	}
+}
+func Baz() {
+	g := func() {
+		for i := gompsym9; i < gompsym10; i += gompsym11 {
+		}
+	}
+	g()
 }
 func main() {
 	fmt.Println("Hello, World!")
