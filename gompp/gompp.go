@@ -2,9 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
-	"bytes"
 
 	"github.com/gophergala/gomp/preproc"
 )
