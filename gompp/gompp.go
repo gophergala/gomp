@@ -10,12 +10,13 @@ import (
 
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan() // Read one line
-	result, err := preproc.PreprocFile(scanner.Text(), "stdin")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Gompp error while using preproc.PreprocFile:\n", err.Error())
-		os.Exit(-1)
+	for scanner.Scan() {
+		result, err := preproc.PreprocFile(scanner.Text(), "stdin")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Gompp error while using preproc.PreprocFile:\n", err.Error())
+			os.Exit(-1)
+		}
+		fmt.Fprintln(os.Stdout, result)
 	}
-	fmt.Fprintf(os.Stdin, result)
 	return
 }
