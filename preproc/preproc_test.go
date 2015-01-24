@@ -18,6 +18,12 @@ func Foo() {
    for f0, f1 := 0, 1 ; f0 < f1; f0, f1 = f1, f0 + f1 {
    }
 }
+func Bar() {
+  if true {
+    for i := 0; i >= -10; i-- {
+    }
+  }
+}
 
 func main() {
 	fmt.Println("Hello, World!")
@@ -39,6 +45,15 @@ func Foo() {
 		}
 	}
 	for f0, f1 := 0, 1; f0 < f1; f0, f1 = f1, f0+f1 {
+	}
+}
+func Bar() {
+	if true {
+		{
+			gompsym6, gompsym7, gompsym8 := 0, -10, -1
+			for i := gompsym6; i >= gompsym7; i += gompsym8 {
+			}
+		}
 	}
 }
 func main() {
