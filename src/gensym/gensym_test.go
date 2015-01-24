@@ -2,15 +2,23 @@ package gensym
 
 import "testing"
 
-func check(expected, actual string, t *testing.T) {
-	if actual != expected {
-		t.Errorf("Fail: %s != %s\n", expected, actual)
-	}
-}
-
 func TestMkGen(t *testing.T) {
-	gen := MkGen("")
-	check("__sym0", gen(), t)
-	check("__sym1", gen(), t)
+	check := func(expected, actual string) {
+		if actual != expected {
+			t.Errorf("Fail: %s != %s\n", expected, actual)
+		}
+	}
 
+	{
+		gen := MkGen("")
+		check("__sym0", gen())
+		check("__sym1", gen())
+		check("__sym2", gen())
+	}
+
+	{
+		gen := MkGen("")
+		check("__sym0", gen())
+		check("__sym1", gen())
+	}
 }
