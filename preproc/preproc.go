@@ -13,7 +13,7 @@ import (
 type Cond int
 
 type Context struct {
-	symGen func() string
+	genSym func() string
 }
 
 const (
@@ -76,9 +76,9 @@ func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, ok bool)
 }
 
 func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
-	initVar, _, initOk := parseForInit(&stmt.Init)
-	condVar, _, _, condOk := parseForCond(&stmt.Cond)
-	postVar, _, postOk := parseForPost(&stmt.Post)
+	initVar, initExpr, initOk := parseForInit(&stmt.Init)
+	condVar, _, condExpr, condOk := parseForCond(&stmt.Cond)
+	postVar, postOp, postOk := parseForPost(&stmt.Post)
 
 	if !initOk || !condOk || !postOk {
 		return nil
@@ -88,7 +88,32 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 	}
 
 	block := new(ast.BlockStmt)
-	block.List = []ast.Stmt{ast.Stmt(stmt)}
+
+	boundsDecl := ast.AssignStmt{}
+	{
+		initVarSym := ast.Ident{Name: context.genSym()}
+		condVarSym := ast.Ident{Name: context.genSym()}
+		incVarSym := ast.Ident{Name: context.genSym()}
+
+		incVarConst := ast.BasicLit{Kind: token.INT}
+		switch postOp {
+		case token.INC:
+			incVarConst.Value = "1"
+		case token.DEC:
+			incVarConst.Value = "-1"
+		}
+
+		boundsDecl.Lhs = []ast.Expr{&initVarSym, &condVarSym, &incVarSym}
+		boundsDecl.Tok = token.DEFINE
+		boundsDecl.Rhs = []ast.Expr{*initExpr, *condExpr, &incVarConst}
+		*initExpr, *condExpr = ast.Expr(&initVarSym), ast.Expr(&condVarSym)
+		stmt.Post = &ast.AssignStmt{
+			Lhs: []ast.Expr{initVar},
+			Tok: token.ADD_ASSIGN,
+			Rhs: []ast.Expr{&incVarSym},
+		}
+	}
+	block.List = []ast.Stmt{&boundsDecl, ast.Stmt(stmt)}
 	return block
 }
 
