@@ -4,6 +4,8 @@ package gensym
 import (
 	"bytes"
 	"fmt"
+	"go/scanner"
+	"go/token"
 	"strconv"
 )
 
@@ -84,6 +86,21 @@ func addWord(root *TrieNode, s string) bool {
 }
 
 func extractSymbols(src string) []string {
-	//file, err := parser.ParseFile(token.NewFileSet(), "", source, parser.AllErrors)
-	return []string{"a", "b", "c"}
+	var s scanner.Scanner
+	fset := token.NewFileSet()
+	file := fset.AddFile("", fset.Base(), len(src))
+	s.Init(file, []byte(src), nil, scanner.ScanComments)
+
+	res := make([]string, 0)
+	for {
+		_, tok, lit := s.Scan()
+		if tok == token.EOF {
+			break
+		}
+		if tok == token.IDENT {
+			res = append(res, lit)
+		}
+	}
+
+	return res
 }
