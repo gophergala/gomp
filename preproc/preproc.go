@@ -1,67 +1,108 @@
 package preproc
 
 import (
-	"fmt"
+	"bytes"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
-	"strconv"
 )
 
-func visitForInit(init ast.Stmt) (variable string, value int64, ok bool) {
-	if init == nil {
+type Cond int
+
+const (
+	COND_LT = iota
+	COND_LE
+	COND_GT
+	COND_GE
+)
+
+func parseForInit(stmt *ast.Stmt) (variable *ast.Ident, initExpr *ast.Expr, ok bool) {
+	if stmt == nil {
 		return
 	}
 	var assignStmt *ast.AssignStmt
-	if assignStmt, ok = init.(*ast.AssignStmt); !ok {
+	if assignStmt, ok = (*stmt).(*ast.AssignStmt); !ok {
 		return
 	}
 	if len(assignStmt.Lhs) != 1 || len(assignStmt.Rhs) != 1 {
 		return
 	}
-	var lhs *ast.Ident
-	if lhs, ok = assignStmt.Lhs[0].(*ast.Ident); !ok {
+	if variable, ok = assignStmt.Lhs[0].(*ast.Ident); !ok {
 		return
 	}
-	variable = lhs.Name
-	var rhs *ast.BasicLit
-	if rhs, ok = assignStmt.Rhs[0].(*ast.BasicLit); !ok || rhs.Kind != token.INT {
+	initExpr = &assignStmt.Rhs[0]
+	return
+}
+
+func parseForCond(expr *ast.Expr) (variable *ast.Ident, op token.Token, bound *ast.Expr, ok bool) {
+	if expr == nil {
 		return
 	}
-	value, err := strconv.ParseInt(rhs.Value, 0, 64)
-	if err != nil {
+	binaryExpr, ok := (*expr).(*ast.BinaryExpr)
+	if !ok {
+		return
+	}
+	switch binaryExpr.Op {
+	case token.LEQ, token.LSS, token.GTR, token.GEQ:
+		op = binaryExpr.Op
+	default:
+		return
+	}
+	if variable, ok = binaryExpr.X.(*ast.Ident); !ok {
+		return
+	}
+	bound = &binaryExpr.Y
+	return
+}
+
+func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, ok bool) {
+	if stmt == nil {
+		return
+	}
+
+	if incDecStmt, isIncDec := (*stmt).(*ast.IncDecStmt); isIncDec {
+		variable, ok = incDecStmt.X.(*ast.Ident)
+		op = incDecStmt.Tok
 		return
 	}
 	return
 }
 
-func visitFor(stmt ast.ForStmt) {
-	if stmt.Init == nil || stmt.Cond == nil || stmt.Post == nil {
-		return
+func visitFor(stmt *ast.ForStmt) *ast.BlockStmt {
+	initVar, _, initOk := parseForInit(&stmt.Init)
+	condVar, _, _, condOk := parseForCond(&stmt.Cond)
+	postVar, _, postOk := parseForPost(&stmt.Post)
+
+	if !initOk || !condOk || !postOk {
+		return nil
 	}
-	variable, value, ok := visitForInit(stmt.Init)
-	if !ok {
-		return
+	if initVar.Name != condVar.Name || initVar.Name != postVar.Name {
+		return nil
 	}
-	fmt.Println("Variable:", variable, ", value:", value)
+
+	block := new(ast.BlockStmt)
+	block.List = []ast.Stmt{ast.Stmt(stmt)}
+	return block
 }
 
-func visitStmt(stmt ast.Stmt) {
+func visitStmt(stmt *ast.Stmt) {
 	if stmt == nil {
 		return
 	}
-	if forStmt, ok := stmt.(*ast.ForStmt); ok {
-		visitFor(*forStmt)
+	if forStmt, ok := (*stmt).(*ast.ForStmt); ok {
+		if block := visitFor(forStmt); block != nil {
+			*stmt = block
+		}
 	}
 }
 
 func visitFunction(f *ast.FuncDecl) {
-	fmt.Println("Visiting function: ", f.Name)
 	if f.Body == nil {
 		return
 	}
-	for _, stmt := range f.Body.List {
-		visitStmt(stmt)
+	for i, _ := range f.Body.List {
+		visitStmt(&f.Body.List[i])
 	}
 }
 
@@ -83,5 +124,9 @@ func PreprocFileImpl(source, filename string) (result string, err error) {
 			visitFunction(fun)
 		}
 	}
+
+	var buf bytes.Buffer
+	printer.Fprint(&buf, token.NewFileSet(), file)
+	result = buf.String()
 	return
 }
