@@ -121,19 +121,37 @@ func visitStmt(stmt *ast.Stmt, context *Context) {
 	if stmt == nil {
 		return
 	}
-	if forStmt, ok := (*stmt).(*ast.ForStmt); ok {
-		if block := visitFor(forStmt, context); block != nil {
+	switch t := (*stmt).(type) {
+	case *ast.ForStmt:
+		if block := visitFor(t, context); block != nil {
 			*stmt = block
+		}
+	case *ast.BlockStmt:
+		visitBlock(t, context)
+	case *ast.IfStmt:
+		visitBlock(t.Body, context)
+	case *ast.SwitchStmt:
+		visitBlock(t.Body, context)
+	case *ast.TypeSwitchStmt:
+		visitBlock(t.Body, context)
+	case *ast.CaseClause:
+		for i, _ := range t.Body {
+			visitStmt(&t.Body[i], context)
+		}
+	}
+}
+
+func visitBlock(stmt *ast.BlockStmt, context *Context) {
+	if stmt != nil {
+		for i, _ := range stmt.List {
+			visitStmt(&stmt.List[i], context)
 		}
 	}
 }
 
 func visitFunction(f *ast.FuncDecl, context *Context) {
-	if f.Body == nil {
-		return
-	}
-	for i, _ := range f.Body.List {
-		visitStmt(&f.Body.List[i], context)
+	if f.Body != nil {
+		visitBlock(f.Body, context)
 	}
 }
 
