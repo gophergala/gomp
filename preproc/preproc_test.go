@@ -48,7 +48,7 @@ func main() {
 )
 
 func TestPreprocFile(t *testing.T) {
-	result, err := PreprocFileImpl(in00, "in00")
+	result, err := PreprocFile(in00, "in00")
 	if err != nil {
 		t.Error(err.Error())
 	}

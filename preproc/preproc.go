@@ -140,12 +140,6 @@ func visitFunction(f *ast.FuncDecl, context *Context) {
 // Run preprocessor on a source. filename is used for error reporting.
 // This function is currently not implemented.
 func PreprocFile(source, filename string) (result string, err error) {
-	result = source
-	return
-}
-
-// This function should be used instead of PreprocFile.
-func PreprocFileImpl(source, filename string) (result string, err error) {
 	context := Context{gensym.MkGen(source)}
 
 	file, err := parser.ParseFile(token.NewFileSet(), filename, source,
