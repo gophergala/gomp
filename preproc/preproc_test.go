@@ -29,13 +29,13 @@ import "fmt"
 
 func Foo() {
 	{
-		__sym0, __sym1, __sym2 := a*b+c, 10, 1
-		for i := __sym0; i < __sym1; i += __sym2 {
+		gompsym0, gompsym1, gompsym2 := a*b+c, 10, 1
+		for i := gompsym0; i < gompsym1; i += gompsym2 {
 		}
 	}
 	{
-		__sym3, __sym4, __sym5 := 31337, -10, -1
-		for j := __sym3; j > __sym4; j += __sym5 {
+		gompsym3, gompsym4, gompsym5 := 31337, -10, -1
+		for j := gompsym3; j > gompsym4; j += gompsym5 {
 		}
 	}
 	for f0, f1 := 0, 1; f0 < f1; f0, f1 = f1, f0+f1 {
