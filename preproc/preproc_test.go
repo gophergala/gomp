@@ -52,7 +52,7 @@ func Foo() {
 	fmt.Println("Hello")
 	{
 		gompsym0, gompsym1, gompsym2 := 0, 10, 1
-		gompsym3 := (gompsym1 - gompsym0 + 1) / (gompsym2 * runtime.NumCPU())
+		gompsym3 := (gompsym1 - gompsym0 + gompsym2*runtime.NumCPU()) / (gompsym2 * runtime.NumCPU())
 		gompsym7 := (gompsym1-gompsym0)/(gompsym3*gompsym2) + 1
 		gompsym6 := make(chan struct {
 		}, gompsym7)

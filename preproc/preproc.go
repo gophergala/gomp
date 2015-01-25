@@ -138,9 +138,18 @@ func mkGoLambda(body *ast.BlockStmt, arg *ast.Ident) *ast.GoStmt {
 }
 
 func emitSchedulerLoop(originVar, begin, end, step *ast.Ident,
+
 	context *Context, originBody *ast.BlockStmt) (code []ast.Stmt) {
+
 	// taskSize := (end - begin + 1) / (numCPU * step)
 	taskSize := mkSym(context)
+	denom := ast.BinaryExpr{
+		X:  step,
+		Op: token.MUL,
+		Y: &ast.CallExpr{Fun: &ast.SelectorExpr{
+			X:   mkIdent("runtime"),
+			Sel: mkIdent("NumCPU")}},
+	}
 	nom := ast.BinaryExpr{
 		X: &ast.BinaryExpr{
 			X:  end,
@@ -148,14 +157,7 @@ func emitSchedulerLoop(originVar, begin, end, step *ast.Ident,
 			Y:  begin,
 		},
 		Op: token.ADD,
-		Y:  mkIntLit(1),
-	}
-	denom := ast.BinaryExpr{
-		X:  step,
-		Op: token.MUL,
-		Y: &ast.CallExpr{Fun: &ast.SelectorExpr{
-			X:   mkIdent("runtime"),
-			Sel: mkIdent("NumCPU")}},
+		Y:  &denom,
 	}
 	taskSizeStmt := ast.AssignStmt{
 		Lhs: []ast.Expr{taskSize},
