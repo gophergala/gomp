@@ -18,14 +18,9 @@ type Context struct {
 	runtimeCalled bool
 }
 
-const (
-	COND_LT = iota
-	COND_LE
-	COND_GT
-	COND_GE
-)
-
-func parseForInit(stmt *ast.Stmt) (variable *ast.Ident, initExpr *ast.Expr, ok bool) {
+// ok is set to true when for init part looks like:
+// for variable := begin ; ... {}
+func parseForInit(stmt *ast.Stmt) (variable *ast.Ident, begin *ast.Expr, ok bool) {
 	if stmt == nil {
 		return
 	}
@@ -39,7 +34,7 @@ func parseForInit(stmt *ast.Stmt) (variable *ast.Ident, initExpr *ast.Expr, ok b
 	if variable, ok = assignStmt.Lhs[0].(*ast.Ident); !ok {
 		return
 	}
-	initExpr = &assignStmt.Rhs[0]
+	begin = &assignStmt.Rhs[0]
 	return
 }
 
@@ -150,7 +145,7 @@ func emitSchedulerLoop(originVar, begin, end, step *ast.Ident,
 			X:   mkIdent("runtime"),
 			Sel: mkIdent("NumCPU")}},
 	}
-	nom := ast.BinaryExpr{
+	num := ast.BinaryExpr{
 		X: &ast.BinaryExpr{
 			X:  end,
 			Op: token.SUB,
@@ -162,7 +157,7 @@ func emitSchedulerLoop(originVar, begin, end, step *ast.Ident,
 	taskSizeStmt := ast.AssignStmt{
 		Lhs: []ast.Expr{taskSize},
 		Tok: token.DEFINE,
-		Rhs: []ast.Expr{&ast.BinaryExpr{X: &nom, Op: token.QUO, Y: &denom}},
+		Rhs: []ast.Expr{&ast.BinaryExpr{X: &num, Op: token.QUO, Y: &denom}},
 	}
 	context.runtimeCalled = true
 	code = append(code, &taskSizeStmt)
