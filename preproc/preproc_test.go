@@ -9,9 +9,12 @@ const (
 	in00 = `package main
 
 import "fmt"
+import "math"
 
 func Foo() {
-   for i := a * b + c; i < 10; i++ {
+   fmt.Println("Hello")
+   for i := 0; i <= 10; i++ {
+       fmt.Println(i)
    }
    for j := 31337; j > -10; j-- {
    }
@@ -20,7 +23,7 @@ func Foo() {
 }
 func Bar() {
   if true {
-    for i := 0; i >= -10; i-- {
+    for i := 99; i >= -10; i-- {
     }
   }
 }
@@ -43,8 +46,9 @@ import "fmt"
 
 func Foo() {
 	{
-		gompsym0, gompsym1, gompsym2 := a*b+c, 10, 1
-		for i := gompsym0; i < gompsym1; i += gompsym2 {
+		gompsym0, gompsym1, gompsym2 := 0, 10, 1
+		for i := gompsym0; i <= gompsym1; i += gompsym2 {
+			fmt.Println(i)
 		}
 	}
 	{
@@ -58,7 +62,7 @@ func Foo() {
 func Bar() {
 	if true {
 		{
-			gompsym6, gompsym7, gompsym8 := 0, -10, -1
+			gompsym6, gompsym7, gompsym8 := 99, -10, -1
 			for i := gompsym6; i >= gompsym7; i += gompsym8 {
 			}
 		}

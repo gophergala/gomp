@@ -13,7 +13,8 @@ import (
 type Cond int
 
 type Context struct {
-	genSym func() string
+	genSym        func() string
+	runtimeCalled bool
 }
 
 const (
@@ -77,7 +78,7 @@ func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, ok bool)
 
 func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 	initVar, initExpr, initOk := parseForInit(&stmt.Init)
-	condVar, _, condExpr, condOk := parseForCond(&stmt.Cond)
+	condVar, condOp, condExpr, condOk := parseForCond(&stmt.Cond)
 	postVar, postOp, postOk := parseForPost(&stmt.Post)
 
 	if !initOk || !condOk || !postOk {
@@ -88,13 +89,12 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 	}
 
 	block := new(ast.BlockStmt)
-
-	boundsDecl := ast.AssignStmt{}
+	block.List = []ast.Stmt{}
+	initVarSym := ast.Ident{Name: context.genSym()}
+	condVarSym := ast.Ident{Name: context.genSym()}
+	incVarSym := ast.Ident{Name: context.genSym()}
 	{
-		initVarSym := ast.Ident{Name: context.genSym()}
-		condVarSym := ast.Ident{Name: context.genSym()}
-		incVarSym := ast.Ident{Name: context.genSym()}
-
+		boundsDecl := ast.AssignStmt{}
 		incVarConst := ast.BasicLit{Kind: token.INT}
 		switch postOp {
 		case token.INC:
@@ -112,8 +112,38 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 			Tok: token.ADD_ASSIGN,
 			Rhs: []ast.Expr{&incVarSym},
 		}
+		block.List = append(block.List, &boundsDecl)
 	}
-	block.List = []ast.Stmt{&boundsDecl, ast.Stmt(stmt)}
+
+	if condOp == token.LEQ {
+		// for i := b; i <= e; i++ { ... }
+		taskSizeSym := ast.Ident{Name: context.genSym()}
+		nom := ast.BinaryExpr{
+			X: &ast.BinaryExpr{
+				X:  &condVarSym,
+				Op: token.SUB,
+				Y:  &initVarSym,
+			},
+			Op: token.ADD,
+			Y:  &ast.BasicLit{Kind: token.INT, Value: "1"},
+		}
+		denom := ast.BinaryExpr{
+			X:  &incVarSym,
+			Op: token.MUL,
+			Y: &ast.CallExpr{Fun: &ast.SelectorExpr{
+				X:   &ast.Ident{Name: "runtime"},
+				Sel: &ast.Ident{Name: "NumCPU"}}},
+		}
+		taskSizeStmt := ast.AssignStmt{
+			Lhs: []ast.Expr{&taskSizeSym},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{&ast.BinaryExpr{X: &nom, Op: token.QUO, Y: &denom}},
+		}
+		block.List = append(block.List, ast.Stmt(&taskSizeStmt))
+		context.runtimeCalled = true
+	}
+
+	block.List = append(block.List, ast.Stmt(stmt))
 	return block
 }
 
@@ -177,7 +207,7 @@ func visitFunction(f *ast.FuncDecl, context *Context) {
 // Run preprocessor on a source. filename is used for error reporting.
 // This function is currently not implemented.
 func PreprocFile(source, filename string) (result string, err error) {
-	context := Context{gensym.MkGen(source)}
+	context := Context{gensym.MkGen(source), false}
 
 	file, err := parser.ParseFile(token.NewFileSet(), filename, source,
 		parser.ParseComments|parser.AllErrors)
@@ -185,10 +215,30 @@ func PreprocFile(source, filename string) (result string, err error) {
 		return
 	}
 	for _, decl := range file.Decls {
-		if fun, ok := decl.(*ast.FuncDecl); ok {
-			visitFunction(fun, &context)
+		switch t := decl.(type) {
+		case *ast.FuncDecl:
+			visitFunction(t, &context)
 		}
 	}
+
+	if context.runtimeCalled {
+		const runtimePath = `"runtime"`
+		runtimeImported := false
+		for _, spec := range file.Imports {
+			if spec.Path != nil && spec.Path.Value == runtimePath {
+				runtimeImported = true
+				break
+			}
+		}
+		if !runtimeImported {
+			runtimeImport := ast.ImportSpec{
+				Path: &ast.BasicLit{Value: runtimePath, Kind: token.STRING}}
+			runtimeDecl := ast.GenDecl{Tok: token.IMPORT, Specs: []ast.Spec{&runtimeImport}}
+			file.Decls = append([]ast.Decl{&runtimeDecl}, file.Decls...)
+			file.Imports = append(file.Imports, &runtimeImport)
+		}
+	}
+	file.Imports = []*ast.ImportSpec{}
 
 	var buf bytes.Buffer
 	printer.Fprint(&buf, token.NewFileSet(), file)
