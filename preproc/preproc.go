@@ -391,14 +391,7 @@ func shouldParalellize(stmt *ast.Stmt, context *Context) bool {
 	}
 	commentGroup := *commentGroups[length-1]
 	length = len(commentGroup.List)
-	if length == 0 {
-		return false
-	}
-	if !strings.HasPrefix(commentGroup.List[length-1].Text, "//gomp") {
-		return false
-	}
-
-	return true
+	return (length > 0) && strings.HasPrefix(commentGroup.List[length-1].Text, "//gomp")
 }
 
 func visitStmt(stmt *ast.Stmt, context *Context) {
