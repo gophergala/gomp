@@ -463,6 +463,8 @@ func visitStmt(stmt *ast.Stmt, context *Context) {
 				*stmt = block
 				//TODO: save old comments here
 			}
+		} else {
+			visitBlock(t.Body, context)
 		}
 	case *ast.BlockStmt:
 		visitBlock(t, context)
