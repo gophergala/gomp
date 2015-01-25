@@ -1,6 +1,6 @@
 #!/bin/bash
 
-go install github.com/gophergala/gomp/gompp
+go install github.com/gophergala/gomp
 
 pushd .
 cd $GOPATH/src/github.com/gophergala/gomp/tests
@@ -17,7 +17,7 @@ do
 	NEW_PROG=${NEW_SOURCE%'.go'}
 	NEW_RESULT=$NEW_PROG'_result'
 	go build $OLD_SOURCE
-	gompp < $OLD_SOURCE > $NEW_SOURCE
+	gomp < $OLD_SOURCE > $NEW_SOURCE
 	go build $NEW_SOURCE
 	./$OLD_PROG | sort > $OLD_RESULT
 	./$NEW_PROG | sort > $NEW_RESULT
