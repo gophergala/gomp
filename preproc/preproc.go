@@ -383,6 +383,10 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 		return nil
 	}
 
+	// Following code transforms loops in the form:
+	// for i := b ; i > e; i (+= | -=) d { ... }
+	// to the form:
+	// for i := b ; i >= (e + 1); i (+= | -=) d {...}
 	if condOp == token.GTR {
 		*condExpr = &ast.BinaryExpr{
 			X:  *condExpr,
@@ -392,6 +396,10 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 		condOp = token.GEQ
 	}
 
+	// Following code transforms loops in the form:
+	// for i := b ; i >= e; i -= d { ... }
+	// to the form:
+	// for i := b - d * ((b - e) / d) ; i <= b ; i -= d { ... }
 	if condOp == token.GEQ {
 		if postOp == token.ADD_ASSIGN {
 			postOp = token.SUB_ASSIGN
