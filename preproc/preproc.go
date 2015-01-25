@@ -63,7 +63,7 @@ func parseForCond(expr *ast.Expr) (variable *ast.Ident, op token.Token, bound *a
 	return
 }
 
-func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, ok bool) {
+func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, postExpr *ast.Expr, ok bool) {
 	if stmt == nil {
 		return
 	}
@@ -73,13 +73,29 @@ func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, ok bool)
 		op = incDecStmt.Tok
 		return
 	}
+	if assignStmt, isAssignStmt := (*stmt).(*ast.AssignStmt); isAssignStmt {
+		if len(assignStmt.Lhs) != 1 || len(assignStmt.Rhs) != 1 {
+			return
+		}
+		if variable, ok = assignStmt.Lhs[0].(*ast.Ident); !ok {
+			return
+		}
+		switch assignStmt.Tok {
+		case token.ADD_ASSIGN, token.SUB_ASSIGN:
+			op = assignStmt.Tok
+		default:
+			ok = false
+			return
+		}
+		postExpr = &assignStmt.Rhs[0]
+	}
 	return
 }
 
 func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 	initVar, initExpr, initOk := parseForInit(&stmt.Init)
 	condVar, condOp, condExpr, condOk := parseForCond(&stmt.Cond)
-	postVar, postOp, postOk := parseForPost(&stmt.Post)
+	postVar, postOp, postExpr, postOk := parseForPost(&stmt.Post)
 
 	if !initOk || !condOk || !postOk {
 		return nil
@@ -96,20 +112,27 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 	{
 		boundsDecl := ast.AssignStmt{}
 		incVarConst := ast.BasicLit{Kind: token.INT}
+		var postToken token.Token
 		switch postOp {
-		case token.INC:
-			incVarConst.Value = "1"
-		case token.DEC:
-			incVarConst.Value = "-1"
+		case token.INC, token.DEC:
+			if postOp == token.INC {
+				incVarConst.Value = "1"
+			} else {
+				incVarConst.Value = "-1"
+			}
+			boundsDecl.Rhs = []ast.Expr{*initExpr, *condExpr, &incVarConst}
+			postToken = token.ADD_ASSIGN
+		case token.ADD_ASSIGN, token.SUB_ASSIGN:
+			boundsDecl.Rhs = []ast.Expr{*initExpr, *condExpr, *postExpr}
+			postToken = postOp
 		}
 
 		boundsDecl.Lhs = []ast.Expr{&initVarSym, &condVarSym, &incVarSym}
 		boundsDecl.Tok = token.DEFINE
-		boundsDecl.Rhs = []ast.Expr{*initExpr, *condExpr, &incVarConst}
 		*initExpr, *condExpr = ast.Expr(&initVarSym), ast.Expr(&condVarSym)
 		stmt.Post = &ast.AssignStmt{
 			Lhs: []ast.Expr{initVar},
-			Tok: token.ADD_ASSIGN,
+			Tok: postToken,
 			Rhs: []ast.Expr{&incVarSym},
 		}
 		block.List = append(block.List, &boundsDecl)
