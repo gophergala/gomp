@@ -22,5 +22,4 @@ func main() {
 		os.Exit(-1)
 	}
 	fmt.Print(result)
-	return
 }
