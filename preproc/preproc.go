@@ -68,24 +68,29 @@ func parseForCond(expr *ast.Expr) (variable *ast.Ident, op token.Token, end *ast
 // for ... ; (variable++ | variable-- | variable += step | variable -= step)
 // In this case op is set to token.{ADD_ASSIGN|SUB_ASSIGN}.
 // Also, in case of ++ or -- operators step is set to 1.
-func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, step ast.Expr, ok bool) {
+func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, step *ast.Expr, ok bool) {
 	if stmt == nil {
 		return
 	}
 
 	if incDecStmt, isIncDec := (*stmt).(*ast.IncDecStmt); isIncDec {
 		variable, ok = incDecStmt.X.(*ast.Ident)
-		step = mkIntLit(1)
+		if !ok {
+			return
+		}
+		newStmt := &ast.AssignStmt{
+			Lhs: []ast.Expr{variable},
+			Rhs: []ast.Expr{mkIntLit(1)},
+		}
 		switch incDecStmt.Tok {
 		case token.INC:
-			op = token.ADD_ASSIGN
+			newStmt.Tok = token.ADD_ASSIGN
 		case token.DEC:
-			op = token.SUB_ASSIGN
+			newStmt.Tok = token.SUB_ASSIGN
 		default:
 			panic("Unknown op in IncDecStmt")
 		}
-
-		return
+		*stmt = newStmt
 	}
 	if assignStmt, isAssignStmt := (*stmt).(*ast.AssignStmt); isAssignStmt {
 		if len(assignStmt.Lhs) != 1 || len(assignStmt.Rhs) != 1 {
@@ -101,7 +106,7 @@ func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, step ast
 			ok = false
 			return
 		}
-		step = assignStmt.Rhs[0]
+		step = &assignStmt.Rhs[0]
 	}
 	return
 }
@@ -374,6 +379,18 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 		return nil
 	}
 
+	if condOp == token.LEQ || condOp == token.LSS {
+		if postOp == token.SUB_ASSIGN {
+			postOp = token.ADD_ASSIGN
+			*postExpr = &ast.BinaryExpr{X: mkIntLit(0), Op: token.SUB, Y: *postExpr}
+		}
+	}
+
+	if condOp == token.LSS {
+		condOp = token.LEQ
+		*condExpr = &ast.BinaryExpr{X: *condExpr, Op: token.SUB, Y: mkIntLit(1)}
+	}
+
 	block := new(ast.BlockStmt)
 	block.List = []ast.Stmt{}
 	initVarSym, condVarSym, incVarSym := mkSym(context), mkSym(context), mkSym(context)
@@ -381,7 +398,7 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 		boundsDecl := ast.AssignStmt{
 			Lhs: []ast.Expr{initVarSym, condVarSym, incVarSym},
 			Tok: token.DEFINE,
-			Rhs: []ast.Expr{*initExpr, *condExpr, postExpr},
+			Rhs: []ast.Expr{*initExpr, *condExpr, *postExpr},
 		}
 
 		*initExpr, *condExpr = ast.Expr(initVarSym), ast.Expr(condVarSym)
@@ -394,11 +411,12 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 		block.List = append(block.List, &boundsDecl)
 	}
 
-	if condOp == token.LEQ {
+	switch condOp {
+	case token.LSS, token.LEQ:
 		block.List = append(
 			block.List,
 			emitSchedulerLoop(initVar, initVarSym, condVarSym, incVarSym, context, stmt.Body)...)
-	} else {
+	default:
 		block.List = append(block.List, ast.Stmt(stmt))
 	}
 	return block
