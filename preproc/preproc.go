@@ -139,7 +139,7 @@ func mkAssign(lhs, rhs ast.Expr) *ast.AssignStmt {
 }
 
 func mkNegate(expr ast.Expr) ast.Expr {
-	return &ast.BinaryExpr{X: mkIntLit(0), Op: token.SUB, Y: expr}
+	return &ast.UnaryExpr{Op: token.SUB, X: expr}
 }
 
 func mkGoLambda(body *ast.BlockStmt, arg *ast.Ident) *ast.GoStmt {
