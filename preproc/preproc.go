@@ -195,7 +195,7 @@ func mkOuterLoop(loopVar *ast.Ident, cond, channel, channelType ast.Expr, body a
 	}
 }
 
-// Creates an inner loop, which is going to be executed on an individual goroutine.
+// Creates an inner loop, what is going to be executed on an individual goroutine.
 // The loop looks like:
 // for loopVar, counter := begin, 0;
 //     loopVar <= end && counter < taskSize;
