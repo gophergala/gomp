@@ -7,6 +7,7 @@ import (
 	"go/printer"
 	"go/token"
 	"strconv"
+	"strings"
 
 	"github.com/gophergala/gomp/gensym"
 )
@@ -16,6 +17,7 @@ type Cond int
 type Context struct {
 	genSym        func() string
 	runtimeCalled bool
+	cmap          ast.CommentMap
 }
 
 // ok is set to true when for init part looks like:
@@ -378,6 +380,17 @@ func visitExpr(e *ast.Expr, context *Context) {
 	}
 }
 
+func shouldParalellize(stmt *ast.Stmt, context *Context) bool {
+	commentGroups := ((*context).cmap)[(*stmt).(ast.Node)]
+	length := len(commentGroups)
+	if length == 0 {
+		return false
+	}
+	commentGroup := *commentGroups[length-1]
+	length = len(commentGroup.List)
+	return (length > 0) && strings.HasPrefix(commentGroup.List[length-1].Text, "//gomp")
+}
+
 func visitStmt(stmt *ast.Stmt, context *Context) {
 	if stmt == nil {
 		return
@@ -388,8 +401,11 @@ func visitStmt(stmt *ast.Stmt, context *Context) {
 			visitExpr(&e, context)
 		}
 	case *ast.ForStmt:
-		if block := visitFor(t, context); block != nil {
-			*stmt = block
+		if shouldParalellize(stmt, context) {
+			if block := visitFor(t, context); block != nil {
+				*stmt = block
+				//TODO: save old comments here
+			}
 		}
 	case *ast.BlockStmt:
 		visitBlock(t, context)
@@ -423,13 +439,14 @@ func visitFunction(f *ast.FuncDecl, context *Context) {
 // Run preprocessor on a source. filename is used for error reporting.
 // This function is currently not implemented.
 func PreprocFile(source, filename string) (result string, err error) {
-	context := Context{gensym.MkGen(source), false}
-
-	file, err := parser.ParseFile(token.NewFileSet(), filename, source,
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filename, source,
 		parser.ParseComments|parser.AllErrors)
 	if err != nil {
 		return
 	}
+	context := Context{gensym.MkGen(source), false, ast.NewCommentMap(fset, file, file.Comments)}
+
 	for _, decl := range file.Decls {
 		switch t := decl.(type) {
 		case *ast.FuncDecl:
@@ -456,6 +473,8 @@ func PreprocFile(source, filename string) (result string, err error) {
 	}
 	file.Imports = []*ast.ImportSpec{}
 
+	//Delete all comments from file
+	file.Comments = nil
 	var buf bytes.Buffer
 	printer.Fprint(&buf, token.NewFileSet(), file)
 	result = buf.String()
