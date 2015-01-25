@@ -6,7 +6,10 @@ func main() {
 
 	p := fmt.Println
 
-	for i := 10; i > 0; i-- {
+	//Multi-line commnets
+	//gomp
+
+	for i := 0; i < 10; i++ {
 		p(10 - i)
 	}
 

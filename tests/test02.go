@@ -6,7 +6,7 @@ func main() {
 
 	p := fmt.Println
 	//gomp
-	for i := 5; i <= 10; i += 3 {
+	for i := 10; i > 0; i-- {
 		p(10 - i)
 	}
 
