@@ -379,6 +379,13 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 		return nil
 	}
 
+	if condOp == token.LEQ || condOp == token.LSS {
+		if postOp == token.SUB_ASSIGN {
+			postOp = token.ADD_ASSIGN
+			*postExpr = &ast.BinaryExpr{X: mkIntLit(0), Op: token.SUB, Y: *postExpr}
+		}
+	}
+
 	if condOp == token.LSS {
 		condOp = token.LEQ
 		*condExpr = &ast.BinaryExpr{X: *condExpr, Op: token.SUB, Y: mkIntLit(1)}
