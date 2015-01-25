@@ -163,7 +163,7 @@ func mkSyncChannelDecl(chanType ast.Expr, numOfGoRoutines *ast.Ident) ast.Expr {
 		}}
 }
 
-// Creates an outer loop, which schedules execution of disjoint parts of the range to goroutines.
+// Creates an outer loop, what schedules execution of disjoint parts of the range to goroutines.
 // The loop looks like:
 // for loopVar := 0; cond; loopVar++ {
 //    go func(i int) {
@@ -197,9 +197,9 @@ func mkOuterLoop(loopVar *ast.Ident, cond, channel, channelType ast.Expr, body a
 
 // Creates an inner loop, which is going to be executed on an individual goroutine.
 // The loop looks like:
-// for (loopVar, counter := begin, 0;
-//      loopVar <= end && counter < taskSize;
-//      loopVar, counter = loopVar + step, counter + 1) {}
+// for loopVar, counter := begin, 0;
+//     loopVar <= end && counter < taskSize;
+//     loopVar, counter = loopVar + step, counter + 1 {}
 //
 // Note that loop body is not set.
 func mkInnerLoop(loopVar *ast.Ident, begin, end, step, taskSize ast.Expr, context *Context) *ast.ForStmt {
