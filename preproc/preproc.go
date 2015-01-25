@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"strconv"
 
 	"github.com/gophergala/gomp/gensym"
 )
@@ -63,14 +64,23 @@ func parseForCond(expr *ast.Expr) (variable *ast.Ident, op token.Token, bound *a
 	return
 }
 
-func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, postExpr *ast.Expr, ok bool) {
+func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, postExpr ast.Expr, ok bool) {
 	if stmt == nil {
 		return
 	}
 
 	if incDecStmt, isIncDec := (*stmt).(*ast.IncDecStmt); isIncDec {
 		variable, ok = incDecStmt.X.(*ast.Ident)
-		op = incDecStmt.Tok
+		postExpr = mkIntLit(1)
+		switch incDecStmt.Tok {
+		case token.INC:
+			op = token.ADD_ASSIGN
+		case token.DEC:
+			op = token.SUB_ASSIGN
+		default:
+			panic("Unknown op in IncDecStmt")
+		}
+
 		return
 	}
 	if assignStmt, isAssignStmt := (*stmt).(*ast.AssignStmt); isAssignStmt {
@@ -87,9 +97,231 @@ func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, postExpr
 			ok = false
 			return
 		}
-		postExpr = &assignStmt.Rhs[0]
+		postExpr = assignStmt.Rhs[0]
 	}
 	return
+}
+
+func mkIntLit(n int) *ast.BasicLit {
+	return &ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(n)}
+}
+
+func mkSym(context *Context) *ast.Ident {
+	return &ast.Ident{Name: context.genSym()}
+}
+
+func mkIdent(name string) *ast.Ident {
+	return &ast.Ident{Name: name}
+}
+
+func mkTypeConv(expr ast.Expr, t string) ast.Expr {
+	return &ast.CallExpr{
+		Fun:  mkIdent(t),
+		Args: []ast.Expr{expr},
+	}
+}
+
+func mkGoLambda(body *ast.BlockStmt, arg *ast.Ident) *ast.GoStmt {
+	return &ast.GoStmt{
+		Call: &ast.CallExpr{
+			Fun: &ast.FuncLit{
+				Type: &ast.FuncType{Params: &ast.FieldList{
+					List: []*ast.Field{
+						&ast.Field{
+							Names: []*ast.Ident{arg},
+							Type:  mkIdent("int")}}}},
+				Body: body,
+			},
+			Args: []ast.Expr{mkTypeConv(arg, "int")},
+		},
+	}
+}
+
+func emitSchedulerLoop(originVar, begin, end, step *ast.Ident,
+	context *Context, originBody *ast.BlockStmt) (code []ast.Stmt) {
+	// taskSize := (end - begin + 1) / (numCPU * step)
+	taskSize := mkSym(context)
+	nom := ast.BinaryExpr{
+		X: &ast.BinaryExpr{
+			X:  end,
+			Op: token.SUB,
+			Y:  begin,
+		},
+		Op: token.ADD,
+		Y:  mkIntLit(1),
+	}
+	denom := ast.BinaryExpr{
+		X:  step,
+		Op: token.MUL,
+		Y: &ast.CallExpr{Fun: &ast.SelectorExpr{
+			X:   mkIdent("runtime"),
+			Sel: mkIdent("NumCPU")}},
+	}
+	taskSizeStmt := ast.AssignStmt{
+		Lhs: []ast.Expr{taskSize},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{&ast.BinaryExpr{X: &nom, Op: token.QUO, Y: &denom}},
+	}
+	context.runtimeCalled = true
+	code = append(code, &taskSizeStmt)
+
+	routineId, perRoutineCounter := mkSym(context), mkSym(context)
+
+	routineIdBoundExpr := ast.BinaryExpr{
+		X:  begin,
+		Op: token.ADD,
+		Y: &ast.BinaryExpr{
+			X:  routineId,
+			Op: token.MUL,
+			Y: &ast.BinaryExpr{
+				X:  taskSize,
+				Op: token.MUL,
+				Y:  step,
+			},
+		},
+	}
+
+	// begin + routineId * taskSize * step <= end
+	routineIdExpr := ast.BinaryExpr{
+		X:  &routineIdBoundExpr,
+		Op: token.LEQ,
+		Y:  end,
+	}
+
+	channel, channelSize := mkSym(context), mkSym(context)
+	channelSizeDecl := ast.AssignStmt{
+		Lhs: []ast.Expr{channelSize},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{
+			&ast.BinaryExpr{
+				X: &ast.BinaryExpr{
+					X: &ast.BinaryExpr{
+						X:  end,
+						Op: token.SUB,
+						Y:  begin,
+					},
+					Op: token.QUO,
+					Y: &ast.BinaryExpr{
+						X:  taskSize,
+						Op: token.MUL,
+						Y:  step,
+					},
+				},
+				Op: token.ADD,
+				Y:  mkIntLit(1)}}}
+	emptyStruct := ast.StructType{
+		Fields: &ast.FieldList{},
+	}
+	channelDecl := ast.AssignStmt{
+		Lhs: []ast.Expr{channel},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{
+			&ast.CallExpr{
+				Fun: mkIdent("make"),
+				Args: []ast.Expr{
+					&ast.ChanType{
+						Value: &emptyStruct,
+						Dir:   ast.SEND | ast.RECV,
+					},
+					channelSize,
+				},
+			},
+		},
+	}
+	code = append(code, &channelSizeDecl)
+	code = append(code, &channelDecl)
+
+	{
+		nestedLoop := ast.ForStmt{
+			Init: &ast.AssignStmt{
+				Lhs: []ast.Expr{originVar, perRoutineCounter},
+				Tok: token.DEFINE,
+				Rhs: []ast.Expr{&routineIdBoundExpr, mkIntLit(0)},
+			},
+			Cond: &ast.BinaryExpr{
+				X: &ast.BinaryExpr{
+					X:  originVar,
+					Op: token.LEQ,
+					Y:  end,
+				},
+				Op: token.LAND,
+				Y: &ast.BinaryExpr{
+					X:  perRoutineCounter,
+					Op: token.LSS,
+					Y:  taskSize,
+				},
+			},
+			Post: &ast.AssignStmt{
+				Lhs: []ast.Expr{originVar, perRoutineCounter},
+				Tok: token.ASSIGN,
+				Rhs: []ast.Expr{&ast.BinaryExpr{
+					X:  originVar,
+					Op: token.ADD,
+					Y:  step},
+					&ast.BinaryExpr{
+						X:  perRoutineCounter,
+						Op: token.ADD,
+						Y:  mkIntLit(1)}},
+			},
+			Body: originBody,
+		}
+		loop := ast.ForStmt{
+			Init: &ast.AssignStmt{
+				Lhs: []ast.Expr{routineId},
+				Tok: token.DEFINE,
+				Rhs: []ast.Expr{mkIntLit(0)},
+			},
+			Cond: &routineIdExpr,
+			Post: &ast.IncDecStmt{
+				X:   routineId,
+				Tok: token.INC,
+			},
+			Body: &ast.BlockStmt{List: []ast.Stmt{
+				mkGoLambda(
+					&ast.BlockStmt{
+						List: []ast.Stmt{
+							&nestedLoop,
+							&ast.SendStmt{
+								Chan: channel,
+								Value: &ast.CompositeLit{
+									Type: &emptyStruct,
+								},
+							}}},
+					routineId),
+			}},
+		}
+		code = append(code, &loop)
+	}
+	{
+		loopVar := mkSym(context)
+		code = append(code, &ast.ForStmt{
+			Init: &ast.AssignStmt{
+				Lhs: []ast.Expr{loopVar},
+				Tok: token.DEFINE,
+				Rhs: []ast.Expr{mkIntLit(0)},
+			},
+			Cond: &ast.BinaryExpr{
+				X:  loopVar,
+				Op: token.LSS,
+				Y:  channelSize,
+			},
+			Post: &ast.IncDecStmt{
+				X:   loopVar,
+				Tok: token.INC,
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ExprStmt{
+						X: &ast.UnaryExpr{
+							X:  channel,
+							Op: token.ARROW,
+						},
+					},
+				},
+			},
+		})
+	}
+	return code
 }
 
 func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
@@ -106,67 +338,31 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 
 	block := new(ast.BlockStmt)
 	block.List = []ast.Stmt{}
-	initVarSym := ast.Ident{Name: context.genSym()}
-	condVarSym := ast.Ident{Name: context.genSym()}
-	incVarSym := ast.Ident{Name: context.genSym()}
+	initVarSym, condVarSym, incVarSym := mkSym(context), mkSym(context), mkSym(context)
 	{
-		boundsDecl := ast.AssignStmt{}
-		incVarConst := ast.BasicLit{Kind: token.INT}
-		var postToken token.Token
-		switch postOp {
-		case token.INC, token.DEC:
-			if postOp == token.INC {
-				incVarConst.Value = "1"
-			} else {
-				incVarConst.Value = "-1"
-			}
-			boundsDecl.Rhs = []ast.Expr{*initExpr, *condExpr, &incVarConst}
-			postToken = token.ADD_ASSIGN
-		case token.ADD_ASSIGN, token.SUB_ASSIGN:
-			boundsDecl.Rhs = []ast.Expr{*initExpr, *condExpr, *postExpr}
-			postToken = postOp
+		boundsDecl := ast.AssignStmt{
+			Lhs: []ast.Expr{initVarSym, condVarSym, incVarSym},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{*initExpr, *condExpr, postExpr},
 		}
 
-		boundsDecl.Lhs = []ast.Expr{&initVarSym, &condVarSym, &incVarSym}
-		boundsDecl.Tok = token.DEFINE
-		*initExpr, *condExpr = ast.Expr(&initVarSym), ast.Expr(&condVarSym)
+		*initExpr, *condExpr = ast.Expr(initVarSym), ast.Expr(condVarSym)
 		stmt.Post = &ast.AssignStmt{
 			Lhs: []ast.Expr{initVar},
-			Tok: postToken,
-			Rhs: []ast.Expr{&incVarSym},
+			Tok: postOp,
+			Rhs: []ast.Expr{incVarSym},
 		}
+
 		block.List = append(block.List, &boundsDecl)
 	}
 
 	if condOp == token.LEQ {
-		// for i := b; i <= e; i++ { ... }
-		taskSizeSym := ast.Ident{Name: context.genSym()}
-		nom := ast.BinaryExpr{
-			X: &ast.BinaryExpr{
-				X:  &condVarSym,
-				Op: token.SUB,
-				Y:  &initVarSym,
-			},
-			Op: token.ADD,
-			Y:  &ast.BasicLit{Kind: token.INT, Value: "1"},
-		}
-		denom := ast.BinaryExpr{
-			X:  &incVarSym,
-			Op: token.MUL,
-			Y: &ast.CallExpr{Fun: &ast.SelectorExpr{
-				X:   &ast.Ident{Name: "runtime"},
-				Sel: &ast.Ident{Name: "NumCPU"}}},
-		}
-		taskSizeStmt := ast.AssignStmt{
-			Lhs: []ast.Expr{&taskSizeSym},
-			Tok: token.DEFINE,
-			Rhs: []ast.Expr{&ast.BinaryExpr{X: &nom, Op: token.QUO, Y: &denom}},
-		}
-		block.List = append(block.List, ast.Stmt(&taskSizeStmt))
-		context.runtimeCalled = true
+		block.List = append(
+			block.List,
+			emitSchedulerLoop(initVar, initVarSym, condVarSym, incVarSym, context, stmt.Body)...)
+	} else {
+		block.List = append(block.List, ast.Stmt(stmt))
 	}
-
-	block.List = append(block.List, ast.Stmt(stmt))
 	return block
 }
 
