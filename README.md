@@ -95,7 +95,7 @@ The loops whose correctness depends on integer overflow
 (as in "for i := ^uint(0); i < 10; i++") are not guaranteed
 to work either.
 
-Current implementation of GoMP strips the file off any comments.
+Current implementation of GoMP strips the file off all its comments.
 The reason for this is the garbling of the line numeration because
 of the changes that we make to the loops. The project authors
 did not have enough time to correct the positions of all the
