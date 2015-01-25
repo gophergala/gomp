@@ -33,9 +33,8 @@ func main() {
 	for i := 0; i < N; i++ {
 		if math.Abs(c[i]-d[i]) > 1e-6 {
 			fmt.Println("Results of computations are not close enough: ", c[i], ", ", d[i])
-			panic("Problems with parallellization")
+			panic("Problems with parallelization")
 		}
 	}
 	fmt.Println("Results of computations are close enough")
-
 }
