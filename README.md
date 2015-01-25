@@ -81,8 +81,8 @@ More examples are at http://github.com/gophergala/gomp/examples.
 
 Limitations
 -----------
-Only 'for' loops that have non-empty Condition, ForClause and
-RangeClause as defined in the language specification are supported.
+Only 'for' loops that have non-empty InitStmt, Condition and
+PostStmt as defined in the language specification are supported.
 
 In case the total range spanned by the loop variable does
 not fit in the 64-bit integer type the resulting loop
@@ -94,8 +94,6 @@ a similar situation.
 The loops whose correctness depends on integer overflow
 (as in "for i := ^uint(0); i < 10; i++") are not guaranteed
 to work either.
-
-The loops with no explicit stopping condition are not processed.
 
 Current implementation of GoMP strips the file off any comments.
 The reason for this is the garbling of the line numeration because
