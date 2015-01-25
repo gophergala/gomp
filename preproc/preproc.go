@@ -366,7 +366,7 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 	return block
 }
 
-func visitExpr(e *ast.Expr, context *Context) {
+func visitExpr(e *ast.Expr, context *Context, cmap *ast.CommentMap) {
 	if e == nil {
 		return
 	}
@@ -376,50 +376,61 @@ func visitExpr(e *ast.Expr, context *Context) {
 			return
 		}
 		for _, s := range t.Body.List {
-			visitStmt(&s, context)
+			visitStmt(&s, context, cmap)
 		}
 	}
 }
 
-func visitStmt(stmt *ast.Stmt, context *Context) {
+func visitStmt(stmt *ast.Stmt, context *Context, cmap *ast.CommentMap) {
 	if stmt == nil {
 		return
 	}
 	switch t := (*stmt).(type) {
 	case *ast.AssignStmt:
 		for _, e := range t.Rhs {
-			visitExpr(&e, context)
+			visitExpr(&e, context, cmap)
 		}
 	case *ast.ForStmt:
-		if block := visitFor(t, context); block != nil {
-			*stmt = block
+		commentGroups := (*cmap)[(*stmt).(ast.Node)]
+		length := len(commentGroups)
+		if length > 0 {
+			commentGroup := *commentGroups[length-1]
+			length1 := len(commentGroup.List)
+			if length1 > 0 {
+				if commentGroup.List[length1-1].Text == "//gomp" {
+					if block := visitFor(t, context); block != nil {
+						*stmt = block
+						(*cmap)[(*stmt).(ast.Node)] = commentGroups
+					}
+				}
+			}
 		}
 	case *ast.BlockStmt:
-		visitBlock(t, context)
+		visitBlock(t, context, cmap)
 	case *ast.IfStmt:
-		visitBlock(t.Body, context)
+		visitBlock(t.Body, context, cmap)
 	case *ast.SwitchStmt:
-		visitBlock(t.Body, context)
+		visitBlock(t.Body, context, cmap)
 	case *ast.TypeSwitchStmt:
-		visitBlock(t.Body, context)
+		visitBlock(t.Body, context, cmap)
 	case *ast.CaseClause:
 		for i, _ := range t.Body {
-			visitStmt(&t.Body[i], context)
+			visitStmt(&t.Body[i], context, cmap)
 		}
 	}
 }
 
-func visitBlock(stmt *ast.BlockStmt, context *Context) {
+func visitBlock(stmt *ast.BlockStmt, context *Context, cmap *ast.CommentMap) {
 	if stmt != nil {
 		for i, _ := range stmt.List {
-			visitStmt(&stmt.List[i], context)
+			visitStmt(&stmt.List[i], context, cmap)
 		}
 	}
 }
 
-func visitFunction(f *ast.FuncDecl, context *Context) {
+func visitFunction(f *ast.FuncDecl, context *Context, cmap *ast.CommentMap) {
 	if f.Body != nil {
-		visitBlock(f.Body, context)
+		visitBlock(f.Body, context, cmap)
 	}
 }
 
@@ -427,16 +438,18 @@ func visitFunction(f *ast.FuncDecl, context *Context) {
 // This function is currently not implemented.
 func PreprocFile(source, filename string) (result string, err error) {
 	context := Context{gensym.MkGen(source), false}
-
-	file, err := parser.ParseFile(token.NewFileSet(), filename, source,
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filename, source,
 		parser.ParseComments|parser.AllErrors)
 	if err != nil {
 		return
 	}
+	cmap := ast.NewCommentMap(fset, file, file.Comments)
+
 	for _, decl := range file.Decls {
 		switch t := decl.(type) {
 		case *ast.FuncDecl:
-			visitFunction(t, &context)
+			visitFunction(t, &context, &cmap)
 		}
 	}
 
@@ -459,6 +472,9 @@ func PreprocFile(source, filename string) (result string, err error) {
 	}
 	file.Imports = []*ast.ImportSpec{}
 
+	//Delete all comments from file
+	//file.Comments = cmap.Filter(file).Comments()
+	file.Comments = nil
 	var buf bytes.Buffer
 	printer.Fprint(&buf, token.NewFileSet(), file)
 	result = buf.String()
