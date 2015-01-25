@@ -7,6 +7,7 @@ import (
 	"go/printer"
 	"go/token"
 	"strconv"
+	"strings"
 
 	"github.com/gophergala/gomp/gensym"
 )
@@ -389,14 +390,11 @@ func shouldParalellize(stmt *ast.Stmt, context *Context) bool {
 		return false
 	}
 	commentGroup := *commentGroups[length-1]
-	length1 := len(commentGroup.List)
-	if length1 == 0 {
+	length = len(commentGroup.List)
+	if length == 0 {
 		return false
 	}
-	if len(commentGroup.List[length1-1].Text) < 6 {
-		return false
-	}
-	if commentGroup.List[length1-1].Text[0:6] != "//gomp" {
+	if !strings.HasPrefix(commentGroup.List[length-1].Text, "//gomp") {
 		return false
 	}
 
