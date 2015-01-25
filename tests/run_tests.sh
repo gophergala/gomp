@@ -1,40 +1,36 @@
 #!/bin/bash
+
 go install github.com/gophergala/gomp/gompp
 
-OLD_PATH=$(pwd)
-NEW_PATH=$GOPATH/src/github.com/gophergala/gomp/tests
-
-cd $NEW_PATH
+pushd .
+cd $GOPATH/src/github.com/gophergala/gomp/tests
 
 rm -rf *_modified* *_result tmp
 
-for entry in $(ls *.go)
+for entry in *.go
 do
-	if [ $entry != 'run_tests.sh' ]; then
-		echo -n 'Processing '$entry'... '
-		OLD_SOURCE=$entry
-		OLD_PROG=${OLD_SOURCE%'.go'}
-		OLD_RESULT=$OLD_PROG'_result'
-		NEW_SOURCE=${OLD_SOURCE%'.go'}'_modified.go'
-		NEW_PROG=${NEW_SOURCE%'.go'}
-		NEW_RESULT=$NEW_PROG'_result'
-		go build $OLD_SOURCE
-		gompp < $OLD_SOURCE > $NEW_SOURCE
-		go build $NEW_SOURCE
-		./$OLD_PROG | sort > $OLD_RESULT
-		./$NEW_PROG | sort > $NEW_RESULT
+	echo -n "Processing $entry... "
+	OLD_SOURCE=$entry
+	OLD_PROG=${OLD_SOURCE%'.go'}
+	OLD_RESULT=$OLD_PROG'_result'
+	NEW_SOURCE=${OLD_SOURCE%'.go'}'_modified.go'
+	NEW_PROG=${NEW_SOURCE%'.go'}
+	NEW_RESULT=$NEW_PROG'_result'
+	go build $OLD_SOURCE
+	gompp < $OLD_SOURCE > $NEW_SOURCE
+	go build $NEW_SOURCE
+	./$OLD_PROG | sort > $OLD_RESULT
+	./$NEW_PROG | sort > $NEW_RESULT
 
-		diff $OLD_RESULT $NEW_RESULT > tmp
-
-		if [$(cat tmp) == '']; then
-			echo 'Passed'
-		else
-			echo 'Failed'
-			exit 1
-		fi
-
-		rm -rf $NEW_SOURCE $NEW_PROG $NEW_RESULT $OLD_PROG $OLD_RESULT tmp
+	if diff $OLD_RESULT $NEW_RESULT >/dev/null 2>&1
+    then
+		echo Passed
+	else
+		echo Failed
+		exit 1
 	fi
+
+	rm -rf $NEW_SOURCE $NEW_PROG $NEW_RESULT $OLD_PROG $OLD_RESULT tmp
 done
 
-cd $OLD_PATH
+popd 2>/dev/null 1>&2
