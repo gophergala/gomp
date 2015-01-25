@@ -1,5 +1,5 @@
 #!/bin/bash
-gomp < bench1.go > bench.go
-go build bench.go
-./bench
-rm -rf bench.go bench
+gomp < bench.go > bench1.go
+go build bench1.go
+./bench1
+rm -rf bench1.go bench1

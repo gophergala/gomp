@@ -20,7 +20,8 @@ func main() {
 	for i := 0; i <= N; i++ {
 		c[i] = math.Exp(math.Sin(float64(i)*h) + math.Cos(math.Pi+float64(i)*h))
 	}
-	fmt.Println("Sequential execution took: ", time.Since(beg1))
+	time1 := time.Since(beg1)
+	fmt.Println("Sequential execution took: ", time1)
 
 	//Parallel execution
 	beg2 := time.Now()
@@ -28,6 +29,8 @@ func main() {
 	for i := 0; i <= N; i++ {
 		c[i] = math.Exp(math.Sin(float64(i)*h) + math.Cos(math.Pi+float64(i)*h))
 	}
-	fmt.Println("Parallel execution took: ", time.Since(beg2))
+	time2 := time.Since(beg2)
+	fmt.Println("Parallel execution took: ", time2)
+	fmt.Println("Speedup is ", float64(time1.Nanoseconds())/float64(time2.Nanoseconds()))
 
 }
