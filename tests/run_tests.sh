@@ -1,9 +1,12 @@
 #!/bin/bash
+go install github.com/gophergala/gomp/gompp
+
 OLD_PATH=$(pwd)
 NEW_PATH=$GOPATH/src/github.com/gophergala/gomp/tests
 
 cd $NEW_PATH
 
+rm -rf *_modified* *_result tmp
 
 for entry in $(ls *.go)
 do
