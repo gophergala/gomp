@@ -84,6 +84,7 @@ func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, postExpr
 		case token.ADD_ASSIGN, token.SUB_ASSIGN:
 			op = assignStmt.Tok
 		default:
+			ok = false
 			return
 		}
 		postExpr = &assignStmt.Rhs[0]
