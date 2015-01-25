@@ -54,6 +54,8 @@ for that matter), the actual rules are rather liberate:
     the specified format.
   * No spaces between the double slash and the word "gomp"
     are allowed.
+  * The exact form of the comment is "//gomp". For example, "// //gomp"
+    will not work.
 
 
 Here is an example of how it may look like:
@@ -74,15 +76,13 @@ The file should be used as standard input to 'gomp':
 	$ gomp <main.go >par.go
 
 
-More examples are at http://github.com/gophergala/gomp/TODO.
+More examples are at http://github.com/gophergala/gomp/examples.
 
 
 Limitations
 -----------
-
-The only loop type supported so far is the 'for' loop
-with its loop condition of the form "i <= a", that is,
-only loops with non-decreasing integer counter are allowed.
+Only 'for' loops that have non-empty Condition, ForClause and
+RangeClause as defined in the language specification are supported.
 
 In case the total range spanned by the loop variable does
 not fit in the 64-bit integer type the resulting loop
@@ -122,21 +122,3 @@ directions of the development.
 2. Add OMP reductions.
 3. Do not erase the comments.
 4. Relieve the user from manually running gomp on every file.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-what happens to src and when (comment removal)
