@@ -20,7 +20,7 @@ type Context struct {
 	cmap          ast.CommentMap
 }
 
-// ok is set to true when for init part looks like:
+// ok is set to true when loop init part looks like:
 // for variable := begin ; ... {}
 func parseForInit(stmt *ast.Stmt) (variable *ast.Ident, begin *ast.Expr, ok bool) {
 	if stmt == nil {
@@ -40,7 +40,10 @@ func parseForInit(stmt *ast.Stmt) (variable *ast.Ident, begin *ast.Expr, ok bool
 	return
 }
 
-func parseForCond(expr *ast.Expr) (variable *ast.Ident, op token.Token, bound *ast.Expr, ok bool) {
+// ok is set to true when loop cond part looks like:
+// for ... ; variable (< | <= | > | >= ) end ; ... {}
+// In this case op is set to token.{LSS|LEQ|GTR|GEQ}.
+func parseForCond(expr *ast.Expr) (variable *ast.Ident, op token.Token, end *ast.Expr, ok bool) {
 	if expr == nil {
 		return
 	}
@@ -57,18 +60,22 @@ func parseForCond(expr *ast.Expr) (variable *ast.Ident, op token.Token, bound *a
 	if variable, ok = binaryExpr.X.(*ast.Ident); !ok {
 		return
 	}
-	bound = &binaryExpr.Y
+	end = &binaryExpr.Y
 	return
 }
 
-func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, postExpr ast.Expr, ok bool) {
+// ok is set to true when loop post part looks like:
+// for ... ; (variable++ | variable-- | variable += step | variable -= step)
+// In this case op is set to token.{ADD_ASSIGN|SUB_ASSIGN}.
+// Also, in case of ++ or -- operators step is set to 1.
+func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, step ast.Expr, ok bool) {
 	if stmt == nil {
 		return
 	}
 
 	if incDecStmt, isIncDec := (*stmt).(*ast.IncDecStmt); isIncDec {
 		variable, ok = incDecStmt.X.(*ast.Ident)
-		postExpr = mkIntLit(1)
+		step = mkIntLit(1)
 		switch incDecStmt.Tok {
 		case token.INC:
 			op = token.ADD_ASSIGN
@@ -94,7 +101,7 @@ func parseForPost(stmt *ast.Stmt) (variable *ast.Ident, op token.Token, postExpr
 			ok = false
 			return
 		}
-		postExpr = assignStmt.Rhs[0]
+		step = assignStmt.Rhs[0]
 	}
 	return
 }
@@ -118,6 +125,14 @@ func mkTypeConv(expr ast.Expr, t string) ast.Expr {
 	}
 }
 
+func mkAssign(lhs, rhs ast.Expr) *ast.AssignStmt {
+	return &ast.AssignStmt{
+		Lhs: []ast.Expr{lhs},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{rhs},
+	}
+}
+
 func mkGoLambda(body *ast.BlockStmt, arg *ast.Ident) *ast.GoStmt {
 	return &ast.GoStmt{
 		Call: &ast.CallExpr{
@@ -134,12 +149,123 @@ func mkGoLambda(body *ast.BlockStmt, arg *ast.Ident) *ast.GoStmt {
 	}
 }
 
-func emitSchedulerLoop(originVar, begin, end, step *ast.Ident,
+// Creates a channel for synchronization between goroutines. Size
+// of channel equals to number of goroutines.
+func mkSyncChannelDecl(chanType ast.Expr, numOfGoRoutines *ast.Ident) ast.Expr {
+	return &ast.CallExpr{
+		Fun: mkIdent("make"),
+		Args: []ast.Expr{
+			&ast.ChanType{
+				Value: chanType,
+				Dir:   ast.SEND | ast.RECV,
+			},
+			numOfGoRoutines,
+		}}
+}
 
-	context *Context, originBody *ast.BlockStmt) (code []ast.Stmt) {
+// Creates an outer loop that schedules execution of disjoint parts of the range to goroutines.
+// The loop looks like:
+// for loopVar := 0; cond; loopVar++ {
+//    go func(i int) {
+//       body
+//       channel <- ...
+//    }(int(loopVar))
+// }
+func mkOuterLoop(loopVar *ast.Ident, cond, channel, channelType ast.Expr, body ast.Stmt) *ast.ForStmt {
+	return &ast.ForStmt{
+		Init: mkAssign(loopVar, mkIntLit(0)),
+		Cond: cond,
+		Post: &ast.IncDecStmt{
+			X:   loopVar,
+			Tok: token.INC,
+		},
+		Body: &ast.BlockStmt{List: []ast.Stmt{
+			mkGoLambda(
+				&ast.BlockStmt{
+					List: []ast.Stmt{
+						body,
+						&ast.SendStmt{
+							Chan: channel,
+							Value: &ast.CompositeLit{
+								Type: channelType,
+							}}}},
+				loopVar),
+		},
+		},
+	}
+}
 
-	// taskSize := (end - begin + 1) / (numCPU * step)
-	taskSize := mkSym(context)
+// Creates an inner loop that is going to be executed on an individual goroutine.
+// The loop looks like:
+// for loopVar, counter := begin, 0;
+//     loopVar <= end && counter < taskSize;
+//     loopVar, counter = loopVar + step, counter + 1 {}
+//
+// Note that loop body is not set.
+func mkInnerLoop(loopVar *ast.Ident, begin, end, step, taskSize ast.Expr, context *Context) *ast.ForStmt {
+	counter := mkSym(context)
+	return &ast.ForStmt{
+		Init: &ast.AssignStmt{
+			Lhs: []ast.Expr{loopVar, counter},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{begin, mkIntLit(0)},
+		},
+		Cond: &ast.BinaryExpr{
+			X: &ast.BinaryExpr{
+				X:  loopVar,
+				Op: token.LEQ,
+				Y:  end,
+			},
+			Op: token.LAND,
+			Y: &ast.BinaryExpr{
+				X:  counter,
+				Op: token.LSS,
+				Y:  taskSize,
+			},
+		},
+		Post: &ast.AssignStmt{
+			Lhs: []ast.Expr{loopVar, counter},
+			Tok: token.ASSIGN,
+			Rhs: []ast.Expr{&ast.BinaryExpr{
+				X:  loopVar,
+				Op: token.ADD,
+				Y:  step},
+				&ast.BinaryExpr{
+					X:  counter,
+					Op: token.ADD,
+					Y:  mkIntLit(1)}},
+		}}
+}
+
+// Creates a loop that reads from the channel numOfGoRoutines times.
+func mkSyncChannelLoop(numOfGoRoutines, channel *ast.Ident, context *Context) ast.Stmt {
+	loopVar := mkSym(context)
+	return &ast.ForStmt{
+		Init: mkAssign(loopVar, mkIntLit(0)),
+		Cond: &ast.BinaryExpr{
+			X:  loopVar,
+			Op: token.LSS,
+			Y:  numOfGoRoutines,
+		},
+		Post: &ast.IncDecStmt{
+			X:   loopVar,
+			Tok: token.INC,
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				&ast.ExprStmt{
+					X: &ast.UnaryExpr{
+						X:  channel,
+						Op: token.ARROW,
+					}}}}}
+}
+
+// Calculates task size as:
+// taskSize := (end - begin + numCPU * step) / (numCPU * step).
+//
+// Task size is an estimation of number of iterations per go routine.
+// Returns new symbol + expression.
+func calcTaskSize(begin, end, step *ast.Ident, context *Context) ast.Expr {
 	denom := ast.BinaryExpr{
 		X:  step,
 		Op: token.MUL,
@@ -156,17 +282,41 @@ func emitSchedulerLoop(originVar, begin, end, step *ast.Ident,
 		Op: token.ADD,
 		Y:  &denom,
 	}
-	taskSizeStmt := ast.AssignStmt{
-		Lhs: []ast.Expr{taskSize},
-		Tok: token.DEFINE,
-		Rhs: []ast.Expr{&ast.BinaryExpr{X: &num, Op: token.QUO, Y: &denom}},
-	}
 	context.runtimeCalled = true
-	code = append(code, &taskSizeStmt)
+	return &ast.BinaryExpr{X: &num, Op: token.QUO, Y: &denom}
+}
 
-	routineId, perRoutineCounter := mkSym(context), mkSym(context)
+// Calculates number of goroutines as:
+// numOfGoRoutines := (end - begin) / (taskSize * step) + 1
+func calcNumOfGoRoutines(begin, end, step, taskSize *ast.Ident) ast.Expr {
+	return &ast.BinaryExpr{
+		X: &ast.BinaryExpr{
+			X: &ast.BinaryExpr{
+				X:  end,
+				Op: token.SUB,
+				Y:  begin,
+			},
+			Op: token.QUO,
+			Y: &ast.BinaryExpr{
+				X:  taskSize,
+				Op: token.MUL,
+				Y:  step,
+			},
+		},
+		Op: token.ADD,
+		Y:  mkIntLit(1),
+	}
+}
 
-	routineIdBoundExpr := ast.BinaryExpr{
+// Creates code for parallel loop.
+func emitSchedulerLoop(loopVar, begin, end, step *ast.Ident, context *Context, loopBody *ast.BlockStmt) (code []ast.Stmt) {
+	taskSize := mkSym(context)
+	code = append(code, mkAssign(taskSize, calcTaskSize(begin, end, step, context)))
+
+	routineId := mkSym(context)
+
+	// routineBegin := begin + routineId * taskSize * step
+	routineBegin := ast.BinaryExpr{
 		X:  begin,
 		Op: token.ADD,
 		Y: &ast.BinaryExpr{
@@ -181,145 +331,34 @@ func emitSchedulerLoop(originVar, begin, end, step *ast.Ident,
 	}
 
 	// begin + routineId * taskSize * step <= end
-	routineIdExpr := ast.BinaryExpr{
-		X:  &routineIdBoundExpr,
+	routineBeginCheckExpr := ast.BinaryExpr{
+		X:  &routineBegin,
 		Op: token.LEQ,
 		Y:  end,
 	}
 
-	channel, channelSize := mkSym(context), mkSym(context)
-	channelSizeDecl := ast.AssignStmt{
-		Lhs: []ast.Expr{channelSize},
-		Tok: token.DEFINE,
-		Rhs: []ast.Expr{
-			&ast.BinaryExpr{
-				X: &ast.BinaryExpr{
-					X: &ast.BinaryExpr{
-						X:  end,
-						Op: token.SUB,
-						Y:  begin,
-					},
-					Op: token.QUO,
-					Y: &ast.BinaryExpr{
-						X:  taskSize,
-						Op: token.MUL,
-						Y:  step,
-					},
-				},
-				Op: token.ADD,
-				Y:  mkIntLit(1)}}}
+	numOfGoRoutines := mkSym(context)
+	code = append(code, mkAssign(
+		numOfGoRoutines,
+		calcNumOfGoRoutines(begin, end, step, taskSize)))
+
 	emptyStruct := ast.StructType{
 		Fields: &ast.FieldList{},
 	}
-	channelDecl := ast.AssignStmt{
-		Lhs: []ast.Expr{channel},
-		Tok: token.DEFINE,
-		Rhs: []ast.Expr{
-			&ast.CallExpr{
-				Fun: mkIdent("make"),
-				Args: []ast.Expr{
-					&ast.ChanType{
-						Value: &emptyStruct,
-						Dir:   ast.SEND | ast.RECV,
-					},
-					channelSize,
-				},
-			},
-		},
-	}
-	code = append(code, &channelSizeDecl)
-	code = append(code, &channelDecl)
+
+	channel := mkSym(context)
+	code = append(code, mkAssign(
+		channel,
+		mkSyncChannelDecl(&emptyStruct, numOfGoRoutines)))
 
 	{
-		nestedLoop := ast.ForStmt{
-			Init: &ast.AssignStmt{
-				Lhs: []ast.Expr{originVar, perRoutineCounter},
-				Tok: token.DEFINE,
-				Rhs: []ast.Expr{&routineIdBoundExpr, mkIntLit(0)},
-			},
-			Cond: &ast.BinaryExpr{
-				X: &ast.BinaryExpr{
-					X:  originVar,
-					Op: token.LEQ,
-					Y:  end,
-				},
-				Op: token.LAND,
-				Y: &ast.BinaryExpr{
-					X:  perRoutineCounter,
-					Op: token.LSS,
-					Y:  taskSize,
-				},
-			},
-			Post: &ast.AssignStmt{
-				Lhs: []ast.Expr{originVar, perRoutineCounter},
-				Tok: token.ASSIGN,
-				Rhs: []ast.Expr{&ast.BinaryExpr{
-					X:  originVar,
-					Op: token.ADD,
-					Y:  step},
-					&ast.BinaryExpr{
-						X:  perRoutineCounter,
-						Op: token.ADD,
-						Y:  mkIntLit(1)}},
-			},
-			Body: originBody,
-		}
-		loop := ast.ForStmt{
-			Init: &ast.AssignStmt{
-				Lhs: []ast.Expr{routineId},
-				Tok: token.DEFINE,
-				Rhs: []ast.Expr{mkIntLit(0)},
-			},
-			Cond: &routineIdExpr,
-			Post: &ast.IncDecStmt{
-				X:   routineId,
-				Tok: token.INC,
-			},
-			Body: &ast.BlockStmt{List: []ast.Stmt{
-				mkGoLambda(
-					&ast.BlockStmt{
-						List: []ast.Stmt{
-							&nestedLoop,
-							&ast.SendStmt{
-								Chan: channel,
-								Value: &ast.CompositeLit{
-									Type: &emptyStruct,
-								},
-							}}},
-					routineId),
-			}},
-		}
-		code = append(code, &loop)
+		innerLoop := mkInnerLoop(loopVar, &routineBegin, end, step, taskSize, context)
+		innerLoop.Body = loopBody
+
+		outerLoop := mkOuterLoop(routineId, &routineBeginCheckExpr, channel, &emptyStruct, innerLoop)
+		code = append(code, outerLoop)
 	}
-	{
-		loopVar := mkSym(context)
-		code = append(code, &ast.ForStmt{
-			Init: &ast.AssignStmt{
-				Lhs: []ast.Expr{loopVar},
-				Tok: token.DEFINE,
-				Rhs: []ast.Expr{mkIntLit(0)},
-			},
-			Cond: &ast.BinaryExpr{
-				X:  loopVar,
-				Op: token.LSS,
-				Y:  channelSize,
-			},
-			Post: &ast.IncDecStmt{
-				X:   loopVar,
-				Tok: token.INC,
-			},
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					&ast.ExprStmt{
-						X: &ast.UnaryExpr{
-							X:  channel,
-							Op: token.ARROW,
-						},
-					},
-				},
-			},
-		})
-	}
+	code = append(code, mkSyncChannelLoop(numOfGoRoutines, channel, context))
 	return code
 }
 
