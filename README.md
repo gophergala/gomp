@@ -106,6 +106,11 @@ is not intended to be read by a human but instead it should
 be compiled and run by a machine so its unreadable state should
 not be that big of a problem (compare this with go generate, again).
 
+Nested loops are not supported: they are scanned and the outermost
+loop that has the "//gomp" comment preceding it is parallelized
+with all its descendants being ignored. If you still want to
+parallelize both the outer and the inner loops, try abstracting
+the inner one into a function.
 
 TODOs
 -----
