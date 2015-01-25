@@ -138,6 +138,10 @@ func mkAssign(lhs, rhs ast.Expr) *ast.AssignStmt {
 	}
 }
 
+func mkNegate(expr ast.Expr) ast.Expr {
+	return &ast.BinaryExpr{X: mkIntLit(0), Op: token.SUB, Y: expr}
+}
+
 func mkGoLambda(body *ast.BlockStmt, arg *ast.Ident) *ast.GoStmt {
 	return &ast.GoStmt{
 		Call: &ast.CallExpr{
@@ -379,14 +383,47 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 		return nil
 	}
 
-	if condOp == token.LEQ || condOp == token.LSS {
-		if postOp == token.SUB_ASSIGN {
-			postOp = token.ADD_ASSIGN
-			*postExpr = &ast.BinaryExpr{X: mkIntLit(0), Op: token.SUB, Y: *postExpr}
+	if condOp == token.GTR {
+		*condExpr = &ast.BinaryExpr{
+			X:  *condExpr,
+			Op: token.ADD,
+			Y:  mkIntLit(1),
 		}
+		condOp = token.GEQ
+	}
+
+	if condOp == token.GEQ {
+		if postOp == token.ADD_ASSIGN {
+			postOp = token.SUB_ASSIGN
+			*postExpr = mkNegate(*postExpr)
+		}
+		newInitExpr := &ast.BinaryExpr{
+			X:  *initExpr,
+			Op: token.SUB,
+			Y: &ast.BinaryExpr{
+				X:  *postExpr,
+				Op: token.MUL,
+				Y: &ast.BinaryExpr{
+					X: &ast.BinaryExpr{
+						X:  *initExpr,
+						Op: token.SUB,
+						Y:  *condExpr,
+					},
+					Op: token.QUO,
+					Y:  *postExpr,
+				},
+			},
+		}
+		*initExpr, *condExpr = newInitExpr, *initExpr
+		condOp = token.LEQ
 	}
 
 	if condOp == token.LSS {
+		if postOp == token.SUB_ASSIGN {
+			postOp = token.ADD_ASSIGN
+			*postExpr = mkNegate(*postExpr)
+		}
+
 		condOp = token.LEQ
 		*condExpr = &ast.BinaryExpr{X: *condExpr, Op: token.SUB, Y: mkIntLit(1)}
 	}
