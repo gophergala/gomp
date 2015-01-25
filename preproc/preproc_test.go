@@ -8,10 +8,16 @@ import (
 const (
 	in00 = `package main
 
-import "fmt"
+import "runtime"
+import (
+  "fmt"
+  "math"
+)
 
 func Foo() {
-   for i := a * b + c; i < 10; i++ {
+   fmt.Println("Hello")
+   for i := 0; i <= 10; i++ {
+       fmt.Println(i)
    }
    for j := 31337; j > -10; j-- {
    }
@@ -20,7 +26,7 @@ func Foo() {
 }
 func Bar() {
   if true {
-    for i := 0; i >= -10; i-- {
+    for i := 99; i >= -10; i-- {
     }
   }
 }
@@ -39,17 +45,24 @@ func main() {
 `
 	out00 = `package main
 
-import "fmt"
+import "runtime"
+import (
+	"fmt"
+	"math"
+)
 
 func Foo() {
+	fmt.Println("Hello")
 	{
-		gompsym0, gompsym1, gompsym2 := a*b+c, 10, 1
-		for i := gompsym0; i < gompsym1; i += gompsym2 {
+		gompsym0, gompsym1, gompsym2 := 0, 10, 1
+		gompsym3 := (gompsym1 - gompsym0 + 1) / (gompsym2 * runtime.NumCPU())
+		for i := gompsym0; i <= gompsym1; i += gompsym2 {
+			fmt.Println(i)
 		}
 	}
 	{
-		gompsym3, gompsym4, gompsym5 := 31337, -10, -1
-		for j := gompsym3; j > gompsym4; j += gompsym5 {
+		gompsym4, gompsym5, gompsym6 := 31337, -10, -1
+		for j := gompsym4; j > gompsym5; j += gompsym6 {
 		}
 	}
 	for f0, f1 := 0, 1; f0 < f1; f0, f1 = f1, f0+f1 {
@@ -58,15 +71,15 @@ func Foo() {
 func Bar() {
 	if true {
 		{
-			gompsym6, gompsym7, gompsym8 := 0, -10, -1
-			for i := gompsym6; i >= gompsym7; i += gompsym8 {
+			gompsym7, gompsym8, gompsym9 := 99, -10, -1
+			for i := gompsym7; i >= gompsym8; i += gompsym9 {
 			}
 		}
 	}
 }
 func Baz() {
 	g := func() {
-		for i := gompsym9; i < gompsym10; i += gompsym11 {
+		for i := gompsym10; i < gompsym11; i += gompsym12 {
 		}
 	}
 	g()
