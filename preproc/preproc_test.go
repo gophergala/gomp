@@ -57,14 +57,28 @@ func main() {
 `
 	out01 = `package main
 
+import "runtime"
 import "fmt"
 
 func main() {
 	p := fmt.Println
 	{
-		gompsym0, gompsym1, gompsym2 := 0, 134, 123
-		for i := gompsym0; i < gompsym1; i += gompsym2 {
-			p(10 - i)
+		gompsym0, gompsym1, gompsym2 := 0, 134-1, 123
+		gompsym3 := (gompsym1 - gompsym0 + gompsym2*runtime.NumCPU()) / (gompsym2 * runtime.NumCPU())
+		gompsym5 := (gompsym1-gompsym0)/(gompsym3*gompsym2) + 1
+		gompsym6 := make(chan struct {
+		}, gompsym5)
+		for gompsym4 := 0; gompsym0+gompsym4*(gompsym3*gompsym2) <= gompsym1; gompsym4++ {
+			go func(gompsym4 int) {
+				for i, gompsym7 := gompsym0+gompsym4*(gompsym3*gompsym2), 0; i <= gompsym1 && gompsym7 < gompsym3; i, gompsym7 = i+gompsym2, gompsym7+1 {
+					p(10 - i)
+				}
+				gompsym6 <- struct {
+				}{}
+			}(int(gompsym4))
+		}
+		for gompsym8 := 0; gompsym8 < gompsym5; gompsym8++ {
+			<-gompsym6
 		}
 	}
 }

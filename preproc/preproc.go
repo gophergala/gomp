@@ -374,6 +374,11 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 		return nil
 	}
 
+	if condOp == token.LSS {
+		condOp = token.LEQ
+		*condExpr = &ast.BinaryExpr{X: *condExpr, Op: token.SUB, Y: mkIntLit(1)}
+	}
+
 	block := new(ast.BlockStmt)
 	block.List = []ast.Stmt{}
 	initVarSym, condVarSym, incVarSym := mkSym(context), mkSym(context), mkSym(context)
@@ -394,11 +399,12 @@ func visitFor(stmt *ast.ForStmt, context *Context) *ast.BlockStmt {
 		block.List = append(block.List, &boundsDecl)
 	}
 
-	if condOp == token.LEQ {
+	switch condOp {
+	case token.LSS, token.LEQ:
 		block.List = append(
 			block.List,
 			emitSchedulerLoop(initVar, initVarSym, condVarSym, incVarSym, context, stmt.Body)...)
-	} else {
+	default:
 		block.List = append(block.List, ast.Stmt(stmt))
 	}
 	return block
