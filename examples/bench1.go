@@ -28,7 +28,6 @@ func main() {
 	for i := 0; i <= N; i++ {
 		c[i] = math.Exp(math.Sin(float64(i)*h) + math.Cos(math.Pi+float64(i)*h))
 	}
-	end2 := time.Now()
-	fmt.Println("Parallel execution took: ", end2.Sub(beg2))
+	fmt.Println("Parallel execution took: ", time.Since(beg2))
 
 }
