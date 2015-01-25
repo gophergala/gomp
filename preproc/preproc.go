@@ -382,6 +382,27 @@ func visitExpr(e *ast.Expr, context *Context) {
 	}
 }
 
+func shouldParalellize(stmt *ast.Stmt, context *Context) bool {
+	commentGroups := ((*context).cmap)[(*stmt).(ast.Node)]
+	length := len(commentGroups)
+	if length == 0 {
+		return false
+	}
+	commentGroup := *commentGroups[length-1]
+	length1 := len(commentGroup.List)
+	if length1 == 0 {
+		return false
+	}
+	if len(commentGroup.List[length1-1].Text) < 6 {
+		return false
+	}
+	if commentGroup.List[length1-1].Text[0:6] != "//gomp" {
+		return false
+	}
+
+	return true
+}
+
 func visitStmt(stmt *ast.Stmt, context *Context) {
 	if stmt == nil {
 		return
@@ -392,18 +413,10 @@ func visitStmt(stmt *ast.Stmt, context *Context) {
 			visitExpr(&e, context)
 		}
 	case *ast.ForStmt:
-		commentGroups := ((*context).cmap)[(*stmt).(ast.Node)]
-		length := len(commentGroups)
-		if length > 0 {
-			commentGroup := *commentGroups[length-1]
-			length1 := len(commentGroup.List)
-			if length1 > 0 {
-				if commentGroup.List[length1-1].Text == "//gomp" {
-					if block := visitFor(t, context); block != nil {
-						*stmt = block
-						((*context).cmap)[(*stmt).(ast.Node)] = commentGroups
-					}
-				}
+		if shouldParalellize(stmt, context) {
+			if block := visitFor(t, context); block != nil {
+				*stmt = block
+				//TODO: save old comments here
 			}
 		}
 	case *ast.BlockStmt:
